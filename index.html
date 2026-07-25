@@ -4,63 +4,175 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Agro-Tycoon</title>
-  <!-- SDK oficial de Telegram Mini Apps -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background-color: #f0f4f8;
+      background-color: #12181f;
+      color: #ffffff;
+      margin: 0;
+      padding: 15px;
       text-align: center;
-      padding: 20px;
-      color: #333;
     }
     .card {
-      background: #ffffff;
-      padding: 20px;
+      background-color: #1e2732;
       border-radius: 12px;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-      max-width: 400px;
-      margin: 0 auto;
+      padding: 15px;
+      margin-bottom: 15px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     }
-    button {
-      background-color: #2e7d32;
-      color: white;
+    .stats-bar {
+      display: flex;
+      justify-content: space-around;
+      font-weight: bold;
+    }
+    .btn {
+      background-color: #ff6b00;
+      color: #fff;
       border: none;
-      padding: 12px 24px;
+      padding: 12px 20px;
       font-size: 16px;
       border-radius: 8px;
       cursor: pointer;
-      margin-top: 15px;
+      width: 100%;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    .btn:disabled {
+      background-color: #4a5568;
+      cursor: not-allowed;
     }
   </style>
 </head>
 <body>
 
+  <h2>🌱 Agro-Tycoon</h2>
+
+  <!-- Panel de Recursos del Jugador -->
+  <div class="card stats-bar">
+    <div>🪙 Monedas: <span id="coins-display">0</span></div>
+    <div>☕ Granos: <span id="beans-display">0</span></div>
+  </div>
+
+  <!-- Parcela de Café -->
   <div class="card">
-    <h1>🌾 Agro-Tycoon ☕</h1>
-    <p id="user-greeting">Cargando datos del agricultor...</p>
-    <button onclick="plantar()">Sembrar Cultivo 🚜</button>
+    <h3>☕ Parcela #1</h3>
+    <p id="crop-status">Estado: Vacía 🟫</p>
+    <button id="action-btn" class="btn" onclick="handleCropAction()">Sembrar Café 🌱</button>
   </div>
 
   <script>
-    // Inicializar el SDK de Telegram
-    const tg = window.Telegram.WebApp;
-    tg.ready();
-    tg.expand();
+    const tg = window.Telegram?.WebApp;
+    if (tg) tg.expand();
 
-    // Obtener información del usuario
-    const user = tg.initDataUnsafe?.user;
-    const greeting = document.getElementById('user-greeting');
+    const BACKEND_URL = 'https://agro-tycoon-backend.onrender.com'; // Ajusta si tu dominio cambió
+    const userId = tg?.initDataUnsafe?.user?.id || 12345; // ID de prueba si estás fuera de Telegram
+    const GROWTH_TIME = 60; // Tiempo en segundos (1 minuto)
 
-    if (user) {
-      greeting.innerText = `¡Bienvenido, ${user.first_name}! Preparado para gestionar tu finca.`;
-    } else {
-      greeting.innerText = '¡Bienvenido a Agro-Tycoon!';
+    let currentStatus = 'empty';
+    let plantedAt = null;
+    let timerInterval = null;
+
+    // Sincronizar datos al abrir la App
+    async function initApp() {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/user/sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: userId,
+            first_name: tg?.initDataUnsafe?.user?.first_name || 'Agricultor',
+            username: tg?.initDataUnsafe?.user?.username || ''
+          })
+        });
+        const data = await res.json();
+        if (data.user) {
+          updateUI(data.user);
+        }
+      } catch (err) {
+        console.error('Error sincronizando:', err);
+      }
     }
 
-    function plantar() {
-      tg.showAlert('¡Has sembrado una nueva parcela!');
+    // Actualizar Interfaz gráfica y temporizadores
+    function updateUI(user) {
+      document.getElementById('coins-display').innerText = user.coins || 0;
+      document.getElementById('beans-display').innerText = user.inventory?.coffeeBeans || 0;
+
+      const crop = user.coffeeCrops?.find(c => c.plotId === 1);
+      if (crop) {
+        currentStatus = crop.status;
+        plantedAt = crop.plantedAt;
+      }
+
+      refreshPlotView();
     }
+
+    function refreshPlotView() {
+      const statusText = document.getElementById('crop-status');
+      const actionBtn = document.getElementById('action-btn');
+      clearInterval(timerInterval);
+
+      if (currentStatus === 'empty') {
+        statusText.innerText = 'Estado: Terreno vacío 🟫';
+        actionBtn.innerText = 'Sembrar Café 🌱';
+        actionBtn.disabled = false;
+      } else if (currentStatus === 'planted') {
+        actionBtn.disabled = true;
+        startTimer();
+      } else if (currentStatus === 'ready') {
+        statusText.innerText = 'Estado: ¡Listo para la cosecha! ☕';
+        actionBtn.innerText = 'Cosechar Granos 🌾';
+        actionBtn.disabled = false;
+      }
+    }
+
+    // Reloj Temporizador en Tiempo Real
+    function startTimer() {
+      const statusText = document.getElementById('crop-status');
+      const actionBtn = document.getElementById('action-btn');
+      const startTime = new Date(plantedAt).getTime();
+
+      timerInterval = setInterval(() => {
+        const now = new Date().getTime();
+        const secondsPassed = Math.floor((now - startTime) / 1000);
+        const secondsLeft = GROWTH_TIME - secondsPassed;
+
+        if (secondsLeft <= 0) {
+          clearInterval(timerInterval);
+          currentStatus = 'ready';
+          statusText.innerText = 'Estado: ¡Listo para la cosecha! ☕';
+          actionBtn.innerText = 'Cosechar Granos 🌾';
+          actionBtn.disabled = false;
+        } else {
+          statusText.innerText = `Creciendo... ⏳ ${secondsLeft}s`;
+          actionBtn.innerText = `Esperando... (${secondsLeft}s)`;
+        }
+      }, 1000);
+    }
+
+    // Acción al presionar el botón de Sembrar/Cosechar
+    async function handleCropAction() {
+      const endpoint = currentStatus === 'empty' ? '/api/crop/plant' : '/api/crop/harvest';
+      
+      try {
+        const res = await fetch(`${BACKEND_URL}${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ telegramId: userId, plotId: 1 })
+        });
+        const data = await res.json();
+        if (data.user) {
+          updateUI(data.user);
+        }
+      } catch (err) {
+        console.error('Error en la acción:', err);
+      }
+    }
+
+    // Ejecutar al cargar la página
+    initApp();
   </script>
+
 </body>
 </html>
