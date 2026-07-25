@@ -3,86 +3,93 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Agro-Tycoon</title>
+  <title>Agro-Tycoon Pro</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background-color: #12181f;
-      color: #ffffff;
-      margin: 0;
-      padding: 15px;
-      text-align: center;
+    :root {
+      --bg-color: #12181f;
+      --card-bg: #1e2732;
+      --accent: #2ecc71;
+      --text: #ffffff;
     }
-    .card {
-      background-color: #1e2732;
-      border-radius: 12px;
-      padding: 15px;
-      margin-bottom: 15px;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    body { font-family: sans-serif; background: var(--bg-color); color: var(--text); margin: 0; padding: 15px; padding-bottom: 75px; }
+    .card { background: var(--card-bg); border-radius: 12px; padding: 15px; margin-bottom: 12px; }
+    .btn { background: var(--accent); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; width: 100%; cursor: pointer; }
+    .btn:disabled { background: #4a5568; cursor: not-allowed; }
+    .stats-bar { display: flex; justify-content: space-around; font-size: 14px; font-weight: bold; }
+    
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: #19222d; display: flex; justify-content: space-around;
+      padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.1);
     }
-    .stats-bar {
-      display: flex;
-      justify-content: space-around;
-      font-weight: bold;
-    }
-    .btn {
-      background-color: #ff6b00;
-      color: #fff;
-      border: none;
-      padding: 12px 20px;
-      font-size: 16px;
-      border-radius: 8px;
-      cursor: pointer;
-      width: 100%;
-      margin-top: 10px;
-      font-weight: bold;
-    }
-    .btn:disabled {
-      background-color: #4a5568;
-      cursor: not-allowed;
-    }
-    #debug-box {
-      background: #2d3748;
-      color: #ff6b6b;
-      padding: 10px;
-      border-radius: 8px;
-      font-size: 12px;
-      margin-top: 15px;
-      text-align: left;
-      word-break: break-all;
-    }
+    .nav-item { color: #a0aec0; text-align: center; font-size: 12px; cursor: pointer; }
+    .nav-item.active { color: var(--accent); font-weight: bold; }
+    .p2p-card { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 8px; }
   </style>
 </head>
 <body>
 
-  <h2>🌱 Agro-Tycoon</h2>
+  <h2>🌱 Agro-Tycoon Pro</h2>
 
-  <!-- Panel de Recursos del Jugador -->
+  <!-- Barra de Recursos -->
   <div class="card stats-bar">
-    <div>🪙 Monedas: <span id="coins-display">0</span></div>
-    <div>☕ Granos: <span id="beans-display">0</span></div>
+    <div>🪙 Monedas: <span id="coins">0</span></div>
+    <div>🌱 Semillas: <span id="seeds">0</span></div>
   </div>
 
-  <!-- Parcela de Café -->
-  <div class="card">
-    <h3>☕ Parcela #1</h3>
-    <p id="crop-status">Estado: Vacía 🟫</p>
-    <button id="action-btn" class="btn" onclick="handleCropAction()">Sembrar Café 🌱</button>
+  <!-- PESTAÑA 1: FINCA -->
+  <div id="tab-finca" class="tab-content active">
+    <div class="card">
+      <h3>☕ Parcela #1</h3>
+      <p id="crop-status">Estado: Vacía 🟫</p>
+      <button id="action-btn" class="btn" onclick="handleCropAction()">Sembrar Café 🌱</button>
+    </div>
   </div>
-<div id="debug-box" style="display: none;">Console Log: Esperando acciones...</div>
-  
-  
+
+  <!-- PESTAÑA 2: FÁBRICA -->
+  <div id="tab-fabrica" class="tab-content">
+    <div class="card">
+      <h3>🏭 Tostadora de Café</h3>
+      <p style="font-size: 13px; color: #a0aec0;">Convierte 2 Cafés Verdes en 2 Cafés Tostados 🔥 (+Valor de venta)</p>
+      <p>Grano Verde: <strong id="green-count">0</strong> | Café Tostado: <strong id="roasted-count">0</strong></p>
+      <button class="btn" onclick="roastCoffee()" style="background-color: #e67e22;">Tostar 2 Granos 🔥</button>
+    </div>
+  </div>
+
+  <!-- PESTAÑA 3: MERCADO -->
+  <div id="tab-mercado" class="tab-content">
+    <!-- Tienda de Insumos -->
+    <div class="card">
+      <h3>🛒 Tienda de Insumos</h3>
+      <p style="font-size: 13px; color: #a0aec0;">Precio: 10 Monedas por Semilla</p>
+      <button class="btn" onclick="buySeeds()" style="background-color: #27ae60;">Comprar 1 Semilla 🌱</button>
+    </div>
+
+    <!-- Mercado P2P -->
+    <div class="card">
+      <h3>📈 Mercado P2P</h3>
+      <button class="btn" onclick="createP2POffer()" style="background-color: #3498db; margin-bottom: 12px;">+ Vender en Mercado P2P</button>
+      <div id="p2p-orders">Cargando ofertas...</div>
+    </div>
+  </div>
+
+  <!-- NAVEGACIÓN POR PESTAÑAS -->
+  <div class="bottom-nav">
+    <div class="nav-item active" onclick="switchTab('finca', this)">🌱<br>Finca</div>
+    <div class="nav-item" onclick="switchTab('fabrica', this)">🏭<br>Fábrica</div>
+    <div class="nav-item" onclick="switchTab('mercado', this)">📈<br>Mercado</div>
+  </div>
 
   <script>
-    function logDebug(msg) {
-      document.getElementById('debug-box').innerText = msg;
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.expand();
+      if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
     }
 
-    const tg = window.Telegram?.WebApp;
-    if (tg) tg.expand();
-
-    // Usar la URL directa de Render para descartar problemas de origen
     const BACKEND_URL = '';
     const userId = tg?.initDataUnsafe?.user?.id || 12345;
     const GROWTH_TIME = 60;
@@ -92,37 +99,28 @@
     let timerInterval = null;
 
     async function initApp() {
-      logDebug('Iniciando sync con userId: ' + userId);
       try {
         const res = await fetch(`${BACKEND_URL}/api/user/sync`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: userId,
-            first_name: tg?.initDataUnsafe?.user?.first_name || 'Agricultor',
-      
-          })
+          body: JSON.stringify({ id: userId, first_name: tg?.initDataUnsafe?.user?.first_name || 'Agricultor' })
         });
         const data = await res.json();
-        logDebug('Sync exitoso: ' + JSON.stringify(data));
-        if (data.user) {
-          updateUI(data.user);
-        }
-      } catch (err) {
-        logDebug('Error en initApp: ' + err.message);
-      }
+        if (data.user) updateUI(data.user);
+      } catch (err) { console.error(err); }
     }
 
     function updateUI(user) {
-      document.getElementById('coins-display').innerText = user.coins || 0;
-      document.getElementById('beans-display').innerText = user.inventory?.coffeeBeans || 0;
+      document.getElementById('coins').innerText = user.coins || 0;
+      document.getElementById('seeds').innerText = user.inventory?.seeds || 0;
+      document.getElementById('green-count').innerText = user.inventory?.greenCoffee || 0;
+      document.getElementById('roasted-count').innerText = user.inventory?.roastedCoffee || 0;
 
       const crop = user.coffeeCrops?.find(c => c.plotId === 1);
       if (crop) {
         currentStatus = crop.status;
         plantedAt = crop.plantedAt;
       }
-
       refreshPlotView();
     }
 
@@ -132,64 +130,147 @@
       clearInterval(timerInterval);
 
       if (currentStatus === 'empty') {
-        statusText.innerText = 'Estado: Terreno vacío 🟫';
+        statusText.innerText = 'Estado: Vacía 🟫';
         actionBtn.innerText = 'Sembrar Café 🌱';
         actionBtn.disabled = false;
+        actionBtn.style.backgroundColor = '#ff6b00';
       } else if (currentStatus === 'planted') {
-        actionBtn.disabled = true;
-        startTimer();
-      } else if (currentStatus === 'ready') {
-        statusText.innerText = 'Estado: ¡Listo para la cosecha! ☕';
-        actionBtn.innerText = 'Cosechar Granos 🌾';
-        actionBtn.disabled = false;
+        const secondsPassed = Math.floor((new Date() - new Date(plantedAt)) / 1000);
+        const remaining = GROWTH_TIME - secondsPassed;
+
+        if (remaining > 0) {
+          statusText.innerText = `Creciendo... ⏳ ${remaining}s`;
+          actionBtn.innerText = `Esperando... (${remaining}s)`;
+          actionBtn.disabled = true;
+          actionBtn.style.backgroundColor = '#4a5568';
+
+          timerInterval = setInterval(() => {
+            const currentRemaining = GROWTH_TIME - Math.floor((new Date() - new Date(plantedAt)) / 1000);
+            if (currentRemaining <= 0) {
+              refreshPlotView();
+            } else {
+              statusText.innerText = `Creciendo... ⏳ ${currentRemaining}s`;
+              actionBtn.innerText = `Esperando... (${currentRemaining}s)`;
+            }
+          }, 1000);
+        } else {
+          statusText.innerText = 'Estado: ¡Listo para cosecha! ☕';
+          actionBtn.innerText = 'Cosechar Café 🧺';
+          actionBtn.disabled = false;
+          actionBtn.style.backgroundColor = '#27ae60';
+        }
       }
     }
 
-    function startTimer() {
-      const statusText = document.getElementById('crop-status');
-      const actionBtn = document.getElementById('action-btn');
-      const startTime = new Date(plantedAt).getTime();
-
-      timerInterval = setInterval(() => {
-        const now = new Date().getTime();
-        const secondsPassed = Math.floor((now - startTime) / 1000);
-        const secondsLeft = GROWTH_TIME - secondsPassed;
-
-        if (secondsLeft <= 0) {
-          clearInterval(timerInterval);
-          currentStatus = 'ready';
-          statusText.innerText = 'Estado: ¡Listo para la cosecha! ☕';
-          actionBtn.innerText = 'Cosechar Granos 🌾';
-          actionBtn.disabled = false;
-        } else {
-          statusText.innerText = `Creciendo... ⏳ ${secondsLeft}s`;
-          actionBtn.innerText = `Esperando... (${secondsLeft}s)`;
-        }
-      }, 1000);
-    }
-
     async function handleCropAction() {
-      const endpoint = currentStatus === 'empty' ? '/api/crop/plant' : '/api/crop/harvest';
-      logDebug('Enviando petición a: ' + endpoint);
-      
+      const endpoint = (currentStatus === 'empty') ? '/api/user/plant' : '/api/user/harvest';
       try {
         const res = await fetch(`${BACKEND_URL}${endpoint}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ telegramId: userId, plotId: 1 })
+          body: JSON.stringify({ id: userId, plotId: 1 })
         });
         const data = await res.json();
-        logDebug('Respuesta recibida: ' + JSON.stringify(data));
-        if (data.user) {
-          updateUI(data.user);
+        if (data.success) updateUI(data.user);
+        else alert(data.error);
+      } catch (err) { console.error(err); }
+    }
+
+    async function roastCoffee() {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/factory/roast`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: userId })
+        });
+        const data = await res.json();
+        if (data.success) updateUI(data.user);
+        else alert(data.error);
+      } catch (err) { console.error(err); }
+    }
+
+    async function buySeeds() {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/shop/buy-seeds`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: userId })
+        });
+        const data = await res.json();
+        if (data.success) updateUI(data.user);
+        else alert(data.error);
+      } catch (err) { console.error(err); }
+    }
+
+    function switchTab(tabName, element) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      
+      document.getElementById(`tab-${tabName}`).classList.add('active');
+      element.classList.add('active');
+
+      if (tg?.HapticFeedback) tg.HapticFeedback.selectionChanged();
+      if (tabName === 'mercado') loadP2POrders();
+    }
+
+    async function loadP2POrders() {
+      const container = document.getElementById('p2p-orders');
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/p2p/orders`);
+        const data = await res.json();
+        if (!data.orders || data.orders.length === 0) {
+          container.innerHTML = '<p style="color:#a0aec0; font-size:13px;">No hay ofertas activas.</p>';
+          return;
         }
-      } catch (err) {
-        logDebug('Error en handleCropAction: ' + err.message);
+
+        container.innerHTML = data.orders.map(o => `
+          <div class="p2p-card">
+            <div><strong>${o.sellerName}</strong> vende ${o.quantity} de ${o.itemType === 'greenCoffee' ? 'Café Verde 🟢' : 'Café Tostado 🔥'}</div>
+            <div style="font-size:12px; color:#a0aec0; margin: 4px 0;">Precio Total: ${o.totalPrice} 🪙</div>
+            <button class="btn" style="padding: 5px 10px; font-size: 12px; background: #e67e22;" onclick="buyP2POrder('${o._id}')">Comprar</button>
+          </div>
+        `).join('');
+      } catch (err) { container.innerHTML = 'Error al cargar el mercado.'; }
+    }
+
+    async function createP2POffer() {
+      const type = prompt('¿Qué deseas vender? Escribe "greenCoffee" para café verde o "roastedCoffee" para café tostado:');
+      if (!type) return;
+      const qty = prompt('Cantidad a vender:');
+      const price = prompt('Precio por unidad (en Monedas):');
+
+      if (qty && price) {
+        try {
+          const res = await fetch(`${BACKEND_URL}/api/p2p/create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: userId, itemType: type, quantity: qty, pricePerUnit: price })
+          });
+          const data = await res.json();
+          if (data.success) {
+            updateUI(data.user);
+            loadP2POrders();
+          } else alert(data.error);
+        } catch (err) { console.error(err); }
       }
     }
 
-    initApp();
-  </script>
+    async function buyP2POrder(orderId) {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/p2p/buy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: userId, orderId })
+        });
+        const data = await res.json();
+        if (data.success) {
+          updateUI(data.user);
+          loadP2POrders();
+        } else alert(data.error);
+      } catch (err) { console.error(err); }
+    }
 
+    window.onload = initApp;
+  </script>
 </body>
 </html>
