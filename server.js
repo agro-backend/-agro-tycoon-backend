@@ -1,10 +1,17 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const path = require('path');
 
 const app = express();
 app.use(express.json());
 app.use(cors());
+
+// Servir la interfaz web (index.html)
+app.use(express.static(path.join(__dirname)));
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 // Conexión a MongoDB Atlas
 const MONGO_URI = process.env.MONGO_URI;
@@ -157,7 +164,7 @@ app.post('/api/factory/roast', async (req, res) => {
   }
 });
 
-// Comprar Semillas en la Tienda System
+// Comprar Semillas en la Tienda
 app.post('/api/shop/buy-seeds', async (req, res) => {
   const { id } = req.body;
   const SEED_PRICE = 10;
@@ -245,7 +252,7 @@ app.post('/api/p2p/buy', async (req, res) => {
     buyer.inventory[order.itemType] = (buyer.inventory[order.itemType] || 0) + order.quantity;
 
     if (seller) {
-      const earnings = Math.floor(order.totalPrice * 0.95); // 5% comisión del juego
+      const earnings = Math.floor(order.totalPrice * 0.95);
       seller.coins += earnings;
       await seller.save();
     }
@@ -264,4 +271,5 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Servidor ejecutándose en el puerto ${PORT}`);
 });
+
 
