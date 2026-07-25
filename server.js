@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
+const TelegramBot = require('node-telegram-bot-api');
 
 const app = express();
 app.use(express.json());
@@ -12,6 +13,10 @@ app.use(express.static(path.join(__dirname)));
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
+
+// Configuración del Bot de Telegram para Notificaciones
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const bot = new TelegramBot(BOT_TOKEN, { polling: false });
 
 // Conexión a MongoDB Atlas
 const MONGO_URI = process.env.MONGO_URI;
@@ -83,7 +88,7 @@ app.post('/api/user/sync', async (req, res) => {
   }
 });
 
-// Sembrar
+// Sembrar (Con Notificación Push programada)
 app.post('/api/user/plant', async (req, res) => {
   const { id, plotId } = req.body;
   try {
@@ -110,6 +115,22 @@ app.post('/api/user/plant', async (req, res) => {
     await user.save();
 
     res.json({ success: true, user });
+
+    // Programar notificación a los 60 segundos (60000 ms)
+    setTimeout(async () => {
+      try {
+        if (BOT_TOKEN) {
+          await bot.sendMessage(
+            id, 
+            `🌾 ¡*Atención Agricultor*! Tu cultivo de café en la Parcela #${plotId || 1} está listo para ser cosechado. ¡Entra a la app y recoge tu café verde! ☕✨`,
+            { parse_mode: 'Markdown' }
+          );
+        }
+      } catch (e) {
+        console.error('Error enviando notificación por Telegram:', e.message);
+      }
+    }, 60000);
+
   } catch (err) {
     res.status(500).json({ error: 'Error al sembrar' });
   }
@@ -229,7 +250,7 @@ app.get('/api/p2p/orders', async (req, res) => {
   }
 });
 
-// Comprar Oferta P2P
+// Comprar Oferta P2P (con notificación al vendedor)
 app.post('/api/p2p/buy', async (req, res) => {
   const { id, orderId } = req.body;
   try {
@@ -255,6 +276,19 @@ app.post('/api/p2p/buy', async (req, res) => {
       const earnings = Math.floor(order.totalPrice * 0.95);
       seller.coins += earnings;
       await seller.save();
+
+      // Notificar al vendedor que se realizó una venta
+      if (BOT_TOKEN) {
+        try {
+          await bot.sendMessage(
+            seller.telegramId,
+            `💰 *¡Venta Realizada!* ${buyer.firstName} ha comprado tu oferta de *${order.quantity}* de café. Has recibido *${earnings} monedas* (5% comisión deducida).`,
+            { parse_mode: 'Markdown' }
+          );
+        } catch (e) {
+          console.error('Error enviando notificación de venta:', e.message);
+        }
+      }
     }
 
     order.status = 'sold';
@@ -271,5 +305,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Servidor ejecutándose en el puerto ${PORT}`);
 });
-
-
