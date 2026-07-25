@@ -75,13 +75,27 @@
       <div id="p2p-orders">Cargando ofertas...</div>
     </div>
   </div>
+      <!-- PESTAÑA 4: ALMACÉN -->
+  <div id="tab-almacen" class="tab-content">
+    <div class="card">
+      <h3>🎒 Almacén Agrícola</h3>
+      <p>🍃 Café Verde: <strong id="inv-cafe-verde">0</strong> kg</p>
+      <p>☕ Café Tostado: <strong id="inv-cafe-procesado">0</strong> kg</p>
+      <button class="btn" onclick="cargarInventario()" style="margin-top: 10px;">
+        🔄 Actualizar Inventario
+      </button>
+    </div>
+  </div>
+
 
   <!-- NAVEGACIÓN POR PESTAÑAS -->
   <div class="bottom-nav">
     <div class="nav-item active" onclick="switchTab('finca', this)">🌱<br>Finca</div>
     <div class="nav-item" onclick="switchTab('fabrica', this)">🏭<br>Fábrica</div>
     <div class="nav-item" onclick="switchTab('mercado', this)">📈<br>Mercado</div>
+    <div class="nav-item" onclick="switchTab('almacen', this)">🎒<br>Almacén</div>
   </div>
+
 
   <script>
     const tg = window.Telegram?.WebApp;
@@ -111,21 +125,24 @@
     }
 
     function updateUI(user) {
-      document.getElementById('coins').innerText = user.coins || 0;
-      document.getElementById('seeds').innerText = user.inventory?.seeds || 0;
-      document.getElementById('green-count').innerText = user.inventory?.greenCoffee || 0;
-      document.getElementById('roasted-count').innerText = user.inventory?.roastedCoffee || 0;
+    document.getElementById('coins').innerText = user.coins || 0;
+    document.getElementById('seeds').innerText = user.inventory?.seeds || 0;
 
-      const crop = user.coffeeCrops?.find(c => c.plotId === 1);
-      if (crop) {
+    // Actualizar inventario en la pestaña Almacén
+    const cafeVerde = user.inventory?.cafeVerde ?? user.inventory?.greenCoffee ?? 0;
+    const cafeProcesado = user.inventory?.cafeProcesado ?? user.inventory?.roastedCoffee ?? 0;
+
+    document.getElementById('inv-cafe-verde').innerText = cafeVerde;
+    document.getElementById('inv-cafe-procesado').innerText = cafeProcesado;
+
+    const crop = user.coffeeCrops?.find(c => c.plotId === 1);
+    if (crop) {
         currentStatus = crop.status;
         plantedAt = crop.plantedAt;
-      }
-      refreshPlotView();
     }
-
-    function refreshPlotView() {
-      const statusText = document.getElementById('crop-status');
+    refreshPlotView();
+      }
+          
       const actionBtn = document.getElementById('action-btn');
       clearInterval(timerInterval);
 
@@ -208,67 +225,80 @@
       
       document.getElementById(`tab-${tabName}`).classList.add('active');
       element.classList.add('active');
+    if (tg?.HapticFeedback) tg.HapticFeedback.selectionChanged();
+    if (tabName === 'mercado') loadP2POrders();
+    if (tabName === 'almacen') cargarInventario();
+}
 
-      if (tg?.HapticFeedback) tg.HapticFeedback.selectionChanged();
-      if (tabName === 'mercado') loadP2POrders();
-    }
-
-    async function loadP2POrders() {
-      const container = document.getElementById('p2p-orders');
-      try {
+async function loadP2POrders() {
+    const container = document.getElementById('p2p-orders');
+    try {
         const res = await fetch(`${BACKEND_URL}/api/p2p/orders`);
         const data = await res.json();
         if (!data.orders || data.orders.length === 0) {
-          container.innerHTML = '<p style="color:#a0aec0; font-size:13px;">No hay ofertas activas.</p>';
-          return;
+            container.innerHTML = '<p style="color:#a0aec0; font-size:13px;">No hay ofertas activas.</p>';
+            return;
         }
 
         container.innerHTML = data.orders.map(o => `
-          <div class="p2p-card">
-            <div><strong>${o.sellerName}</strong> vende ${o.quantity} de ${o.itemType === 'greenCoffee' ? 'Café Verde 🟢' : 'Café Tostado 🔥'}</div>
-            <div style="font-size:12px; color:#a0aec0; margin: 4px 0;">Precio Total: ${o.totalPrice} 🪙</div>
-            <button class="btn" style="padding: 5px 10px; font-size: 12px; background: #e67e22;" onclick="buyP2POrder('${o._id}')">Comprar</button>
-          </div>
+            <div class="p2p-card">
+                <div><strong>${o.sellerName}</strong> vende ${o.quantity} de ${o.itemType === 'greenCoffee' ? 'Café Verde' : 'Café Tostado'}</div>
+                <div style="font-size:12px; color:#a0aec0; margin: 4px 0;">Precio Total: ${o.totalPrice} 🪙</div>
+                <button class="btn" style="padding: 5px 10px; font-size: 12px; background: #e67e22;" onclick="buyP2POrder('${o._id}')">Comprar</button>
+            </div>
         `).join('');
-      } catch (err) { container.innerHTML = 'Error al cargar el mercado.'; }
-    }
+    } catch (err) { container.innerHTML = 'Error al cargar el mercado.'; }
+}
 
-    async function createP2POffer() {
-      const type = prompt('¿Qué deseas vender? Escribe "greenCoffee" para café verde o "roastedCoffee" para café tostado:');
-      if (!type) return;
-      const qty = prompt('Cantidad a vender:');
-      const price = prompt('Precio por unidad (en Monedas):');
+async function createP2POffer() {
+    const type = prompt('¿Qué deseas vender? Escribe "greenCoffee" para café verde o "roastedCoffee" para café tostado:');
+    if (!type) return;
+    const qty = prompt('Cantidad a vender:');
+    const price = prompt('Precio por unidad (en Monedas):');
 
-      if (qty && price) {
+    if (qty && price) {
         try {
-          const res = await fetch(`${BACKEND_URL}/api/p2p/create`, {
+            const res = await fetch(`${BACKEND_URL}/api/p2p/create`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: userId, itemType: type, quantity: qty, pricePerUnit: price })
+            });
+            const data = await res.json();
+            if (data.success) {
+                updateUI(data.user);
+                loadP2POrders();
+            } else alert(data.error);
+        } catch (err) { console.error(err); }
+    }
+}
+
+async function buyP2POrder(orderId) {
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/p2p/buy`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: userId, itemType: type, quantity: qty, pricePerUnit: price })
-          });
-          const data = await res.json();
-          if (data.success) {
-            updateUI(data.user);
-            loadP2POrders();
-          } else alert(data.error);
-        } catch (err) { console.error(err); }
-      }
-    }
-
-    async function buyP2POrder(orderId) {
-      try {
-        const res = await fetch(`${BACKEND_URL}/api/p2p/buy`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: userId, orderId })
+            body: JSON.stringify({ id: userId, orderId })
         });
         const data = await res.json();
         if (data.success) {
-          updateUI(data.user);
-          loadP2POrders();
+            updateUI(data.user);
+            loadP2POrders();
         } else alert(data.error);
-      } catch (err) { console.error(err); }
+    } catch (err) { console.error(err); }
+}
+
+async function cargarInventario() {
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/inventory/${userId}`);
+        const data = await res.json();
+        if (res.ok) {
+            document.getElementById('inv-cafe-verde').innerText = data.cafeVerde || 0;
+            document.getElementById('inv-cafe-procesado').innerText = data.cafeProcesado || 0;
+        }
+    } catch (err) {
+        console.error('Error al cargar inventario:', err);
     }
+}
 
     window.onload = initApp;
   </script>
