@@ -60,10 +60,11 @@ app.post('/api/crop/plant', async (req, res) => {
 
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
+    if (!user.coffeeCrops) user.coffeeCrops = [];
+
     let crop = user.coffeeCrops.find(c => c.plotId === plotId);
     if (!crop) {
-      crop = { plotId, status: 'planted', plantedAt: new Date() };
-      user.coffeeCrops.push(crop);
+      user.coffeeCrops.push({ plotId, status: 'planted', plantedAt: new Date() });
     } else {
       crop.status = 'planted';
       crop.plantedAt = new Date();
@@ -73,7 +74,7 @@ app.post('/api/crop/plant', async (req, res) => {
     res.json({ success: true, user });
   } catch (error) {
     console.error('Error al sembrar:', error);
-    res.status(500).json({ error: 'Error interno al sembrar' });
+    res.status(500).json({ error: 'Error interno al sembrar: ' + error.message });
   }
 });
 
@@ -85,13 +86,17 @@ app.post('/api/crop/harvest', async (req, res) => {
 
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
+    if (!user.coffeeCrops) user.coffeeCrops = [];
+
     let crop = user.coffeeCrops.find(c => c.plotId === plotId);
     if (crop) {
       crop.status = 'empty';
       crop.plantedAt = null;
-if (!user.inventory) user.inventory = { coffeeBeans: 0 };
-user.inventory.coffeeBeans = (user.inventory.coffeeBeans || 0) + 10;
+
+      if (!user.inventory) user.inventory = { coffeeBeans: 0 };
+      user.inventory.coffeeBeans = (user.inventory.coffeeBeans || 0) + 10;
       user.coins = (user.coins || 0) + 15;
+
       await user.save();
       return res.json({ success: true, user });
     }
@@ -99,7 +104,7 @@ user.inventory.coffeeBeans = (user.inventory.coffeeBeans || 0) + 10;
     res.status(400).json({ error: 'No se encontró la parcela' });
   } catch (error) {
     console.error('Error al cosechar:', error);
-    res.status(500).json({ error: 'Error interno al cosechar' });
+    res.status(500).json({ error: 'Error interno al cosechar: ' + error.message });
   }
 });
 
@@ -107,3 +112,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Servidor ejecutándose en el puerto ${PORT}`);
 });
+  
