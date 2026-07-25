@@ -42,6 +42,16 @@
       background-color: #4a5568;
       cursor: not-allowed;
     }
+    #debug-box {
+      background: #2d3748;
+      color: #ff6b6b;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      margin-top: 15px;
+      text-align: left;
+      word-break: break-all;
+    }
   </style>
 </head>
 <body>
@@ -61,21 +71,27 @@
     <button id="action-btn" class="btn" onclick="handleCropAction()">Sembrar Café 🌱</button>
   </div>
 
+  <div id="debug-box">Console Log: Esperando acciones...</div>
+
   <script>
+    function logDebug(msg) {
+      document.getElementById('debug-box').innerText = msg;
+    }
+
     const tg = window.Telegram?.WebApp;
     if (tg) tg.expand();
 
-    const BACKEND_URL = window.location.origin;
-
-    const userId = tg?.initDataUnsafe?.user?.id || 12345; // ID de prueba si estás fuera de Telegram
-    const GROWTH_TIME = 60; // Tiempo en segundos (1 minuto)
+    // Usar la URL directa de Render para descartar problemas de origen
+    const BACKEND_URL = 'https://-agro-tycoon-backend.onrender.com'; 
+    const userId = tg?.initDataUnsafe?.user?.id || 12345;
+    const GROWTH_TIME = 60;
 
     let currentStatus = 'empty';
     let plantedAt = null;
     let timerInterval = null;
 
-    // Sincronizar datos al abrir la App
     async function initApp() {
+      logDebug('Iniciando sync con userId: ' + userId);
       try {
         const res = await fetch(`${BACKEND_URL}/api/user/sync`, {
           method: 'POST',
@@ -87,15 +103,15 @@
           })
         });
         const data = await res.json();
+        logDebug('Sync exitoso: ' + JSON.stringify(data));
         if (data.user) {
           updateUI(data.user);
         }
       } catch (err) {
-        console.error('Error sincronizando:', err);
+        logDebug('Error en initApp: ' + err.message);
       }
     }
 
-    // Actualizar Interfaz gráfica y temporizadores
     function updateUI(user) {
       document.getElementById('coins-display').innerText = user.coins || 0;
       document.getElementById('beans-display').innerText = user.inventory?.coffeeBeans || 0;
@@ -128,7 +144,6 @@
       }
     }
 
-    // Reloj Temporizador en Tiempo Real
     function startTimer() {
       const statusText = document.getElementById('crop-status');
       const actionBtn = document.getElementById('action-btn');
@@ -152,9 +167,9 @@
       }, 1000);
     }
 
-    // Acción al presionar el botón de Sembrar/Cosechar
     async function handleCropAction() {
       const endpoint = currentStatus === 'empty' ? '/api/crop/plant' : '/api/crop/harvest';
+      logDebug('Enviando petición a: ' + endpoint);
       
       try {
         const res = await fetch(`${BACKEND_URL}${endpoint}`, {
@@ -163,15 +178,15 @@
           body: JSON.stringify({ telegramId: userId, plotId: 1 })
         });
         const data = await res.json();
+        logDebug('Respuesta recibida: ' + JSON.stringify(data));
         if (data.user) {
           updateUI(data.user);
         }
       } catch (err) {
-        console.error('Error en la acción:', err);
+        logDebug('Error en handleCropAction: ' + err.message);
       }
     }
 
-    // Ejecutar al cargar la página
     initApp();
   </script>
 
