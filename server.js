@@ -289,19 +289,80 @@ app.post('/api/p2p/buy', async (req, res) => {
           console.error('Error enviando notificación de venta:', e.message);
         }
       }
-    }
+   order.status = 'sold';
+await order.save();
+await buyer.save();
 
-    order.status = 'sold';
-    await order.save();
-    await buyer.save();
-
-    res.json({ success: true, user: buyer });
-  } catch (err) {
+res.json({ success: true, user: buyer });
+} catch (err) {
     res.status(500).json({ error: 'Error en la compra P2P' });
-  }
+}
 });
 
+// ==========================================
+// ENDPOINTS DE INVENTARIO Y COSECHA
+// ==========================================
+
+// 1. Obtener el inventario del usuario
+app.get('/api/inventory/:telegramId', async (req, res) => {
+    try {
+        const { telegramId } = req.params;
+        let user = await User.findOne({ telegramId });
+        
+        if (!user) {
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+
+        res.json({
+            coins: user.coins || 0,
+            cafeVerde: user.inventory?.cafeVerde || 0,
+            cafeProcesado: user.inventory?.cafeProcesado || 0
+        });
+    } catch (error) {
+        console.error('Error al obtener inventario:', error);
+        res.status(500).json({ error: 'Error al consultar el inventario' });
+    }
+});
+
+// 2. Registrar Cosecha y sumar café al inventario
+app.post('/api/harvest', async (req, res) => {
+    try {
+        const { telegramId, cantidad = 10 } = req.body;
+        
+        if (!telegramId) {
+            return res.status(400).json({ error: 'Se requiere telegramId' });
+        }
+
+        let user = await User.findOne({ telegramId });
+
+        if (!user) {
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+
+        if (!user.inventory) {
+            user.inventory = { cafeVerde: 0, cafeProcesado: 0 };
+        }
+
+        user.inventory.cafeVerde = (user.inventory.cafeVerde || 0) + Number(cantidad);
+
+        await user.save();
+
+        res.json({ 
+            success: true, 
+            message: `¡Cosecha recolectada! +${cantidad} kg de Café Verde.`, 
+            inventory: user.inventory 
+        });
+    } catch (error) {
+        console.error('Error al registrar cosecha:', error);
+        res.status(500).json({ error: 'Error al guardar la cosecha' });
+    }
+});
+
+// ==========================================
+// INICIO DEL SERVIDOR
+// ==========================================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor ejecutándose en el puerto ${PORT}`);
+    console.log(`🚀 Servidor ejecutándose en el puerto ${PORT}`);
 });
+                        
