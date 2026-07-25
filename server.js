@@ -34,8 +34,12 @@ const UserSchema = new mongoose.Schema({
   inventory: {
     cafeVerde: { type: Number, default: 0 },
     cafeProcesado: { type: Number, default: 0 }
-  }
+  },
+  // Nuevos campos para referidos
+  referredBy: { type: String, default: null },
+  referralsCount: { type: Number, default: 0 }
 });
+
 
 const P2POrderSchema = new mongoose.Schema({
   sellerId: { type: String, required: true },
