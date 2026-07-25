@@ -1,161 +1,102 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const path = require('path');
 const TelegramBot = require('node-telegram-bot-api');
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Servir la interfaz web (index.html)
-app.use(express.static(path.join(__dirname)));
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+// Configuración de variables de entorno
+const PORT = process.env.PORT || 3000;
+const MONGO_URI = process.env.MONGO_URI;
+const BOT_TOKEN = process.env.BOT_TOKEN;
+
+// Inicialización del Bot de Telegram (si se proporciona token)
+let bot;
+if (BOT_TOKEN) {
+  bot = new TelegramBot(BOT_TOKEN, { polling: false });
+}
+
+// Conexión a MongoDB
+mongoose.connect(MONGO_URI)
+  .then(() => console.log('Conectado con éxito a MongoDB'))
+  .catch(err => console.error('Error al conectar a MongoDB:', err));
+
+// ==========================================
+// MODELOS DE BASE DE DATOS
+// ==========================================
+
+const UserSchema = new mongoose.Schema({
+  telegramId: { type: String, required: true, unique: true },
+  firstName: String,
+  coins: { type: Number, default: 100 },
+  inventory: {
+    cafeVerde: { type: Number, default: 0 },
+    cafeProcesado: { type: Number, default: 0 }
+  }
 });
 
-// Configuración del Bot de Telegram para Notificaciones
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const bot = new TelegramBot(BOT_TOKEN, { polling: false });
-
-// Conexión a MongoDB Atlas
-const MONGO_URI = process.env.MONGO_URI;
-mongoose.connect(MONGO_URI)
-  .then(() => console.log('✅ Conectado exitosamente a MongoDB Atlas'))
-  .catch(err => console.error('❌ Error al conectar a MongoDB:', err));
-
-// 1. ESQUEMA DE USUARIO
-const userSchema = new mongoose.Schema({
-  telegramId: { type: String, required: true, unique: true },
-  firstName: { type: String, default: 'Agricultor' },
-  coins: { type: Number, default: 200 },
-  
-  inventory: {
-    seeds: { type: Number, default: 5 },
-    greenCoffee: { type: Number, default: 0 },
-    roastedCoffee: { type: Number, default: 0 }
-  },
-
-  coffeeCrops: [{
-    plotId: Number,
-    status: { type: String, default: 'empty' },
-    plantedAt: Date
-  }],
-
-  factory: {
-    roaster: {
-      unlocked: { type: Boolean, default: true },
-      status: { type: String, default: 'idle' }
-    }
-  }
-}, { timestamps: true });
-
-const User = mongoose.model('User', userSchema);
-
-// 2. ESQUEMA MERCADO P2P
-const p2pOrderSchema = new mongoose.Schema({
+const P2POrderSchema = new mongoose.Schema({
   sellerId: { type: String, required: true },
-  sellerName: { type: String, default: 'Anónimo' },
-  itemType: { type: String, enum: ['greenCoffee', 'roastedCoffee'], required: true },
-  quantity: { type: Number, required: true, min: 1 },
-  pricePerUnit: { type: Number, required: true, min: 1 },
+  itemType: { type: String, required: true }, // 'cafeVerde' o 'cafeProcesado'
+  quantity: { type: Number, required: true },
   totalPrice: { type: Number, required: true },
-  status: { type: String, enum: ['active', 'sold'], default: 'active' }
-}, { timestamps: true });
+  status: { type: String, default: 'active' }, // 'active', 'sold', 'cancelled'
+  createdAt: { type: Date, default: Date.now }
+});
 
-const P2POrder = mongoose.model('P2POrder', p2pOrderSchema);
+const User = mongoose.model('User', UserSchema);
+const P2POrder = mongoose.model('P2POrder', P2POrderSchema);
 
-// --- RUTAS API ---
+// ==========================================
+// ENDPOINTS DEL JUEGO
+// ==========================================
 
-// Sincronización inicial
-app.post('/api/user/sync', async (req, res) => {
-  const { id, first_name } = req.body;
-  if (!id) return res.status(400).json({ error: 'Falta Telegram ID' });
-
+// Autenticación o inicio de usuario
+app.post('/api/user/start', async (req, res) => {
+  const { id, firstName } = req.body;
   try {
     let user = await User.findOne({ telegramId: id.toString() });
     if (!user) {
       user = new User({
         telegramId: id.toString(),
-        firstName: first_name || 'Agricultor',
-        coffeeCrops: [{ plotId: 1, status: 'empty' }]
+        firstName: firstName || 'Agricultor'
       });
       await user.save();
     }
     res.json({ success: true, user });
   } catch (err) {
-    res.status(500).json({ error: 'Error en sync' });
+    res.status(500).json({ error: 'Error al iniciar usuario' });
   }
 });
 
-// Sembrar (Con Notificación Push programada)
+// Endpoint para Sembrar
 app.post('/api/user/plant', async (req, res) => {
-  const { id, plotId } = req.body;
+  const { id } = req.body;
   try {
     const user = await User.findOne({ telegramId: id.toString() });
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-    if ((user.inventory.seeds || 0) < 1) {
-      return res.status(400).json({ error: 'No tienes semillas suficientes. Cómpralas en el mercado.' });
-    }
-
-    let crop = user.coffeeCrops.find(c => c.plotId === (plotId || 1));
-    if (!crop) {
-      crop = { plotId: plotId || 1, status: 'empty' };
-      user.coffeeCrops.push(crop);
-    }
-
-    if (crop.status === 'planted') {
-      return res.status(400).json({ error: 'Esta parcela ya está sembrada.' });
-    }
-
-    user.inventory.seeds -= 1;
-    crop.status = 'planted';
-    crop.plantedAt = new Date();
-    await user.save();
-
     res.json({ success: true, user });
-
-    // Programar notificación a los 60 segundos (60000 ms)
-    setTimeout(async () => {
-      try {
-        if (BOT_TOKEN) {
-          await bot.sendMessage(
-            id, 
-            `🌾 ¡*Atención Agricultor*! Tu cultivo de café en la Parcela #${plotId || 1} está listo para ser cosechado. ¡Entra a la app y recoge tu café verde! ☕✨`,
-            { parse_mode: 'Markdown' }
-          );
-        }
-      } catch (e) {
-        console.error('Error enviando notificación por Telegram:', e.message);
-      }
-    }, 60000);
-
   } catch (err) {
     res.status(500).json({ error: 'Error al sembrar' });
   }
 });
 
-// Cosechar
+// Endpoint para Cosechar
 app.post('/api/user/harvest', async (req, res) => {
-  const { id, plotId } = req.body;
+  const { id } = req.body;
   try {
     const user = await User.findOne({ telegramId: id.toString() });
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-    const crop = user.coffeeCrops.find(c => c.plotId === (plotId || 1));
-    if (!crop || crop.status !== 'planted') {
-      return res.status(400).json({ error: 'No hay cultivo para cosechar.' });
+    if (!user.inventory) {
+      user.inventory = { cafeVerde: 0, cafeProcesado: 0 };
     }
 
-    const elapsedSeconds = (new Date() - new Date(crop.plantedAt)) / 1000;
-    if (elapsedSeconds < 60) {
-      return res.status(400).json({ error: 'El cultivo aún no está listo.' });
-    }
-
-    crop.status = 'empty';
-    crop.plantedAt = null;
-    user.inventory.greenCoffee = (user.inventory.greenCoffee || 0) + 1;
+    // Se otorgan 10 kg de café verde por cosecha
+    user.inventory.cafeVerde = (user.inventory.cafeVerde || 0) + 10;
     await user.save();
 
     res.json({ success: true, user });
@@ -164,41 +105,39 @@ app.post('/api/user/harvest', async (req, res) => {
   }
 });
 
-// Tostar Café en la Fábrica
+// Endpoint para Procesar / Tostar Café
 app.post('/api/factory/roast', async (req, res) => {
   const { id } = req.body;
   try {
     const user = await User.findOne({ telegramId: id.toString() });
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-    if ((user.inventory.greenCoffee || 0) < 2) {
-      return res.status(400).json({ error: 'Necesitas al menos 2 granos verdes para tostar.' });
+    if (!user.inventory || user.inventory.cafeVerde < 10) {
+      return res.status(400).json({ error: 'Necesitas al menos 10 kg de café verde' });
     }
 
-    user.inventory.greenCoffee -= 2;
-    user.inventory.roastedCoffee = (user.inventory.roastedCoffee || 0) + 2;
+    user.inventory.cafeVerde -= 10;
+    user.inventory.cafeProcesado = (user.inventory.cafeProcesado || 0) + 10;
     await user.save();
 
-    res.json({ success: true, message: '¡Café tostado con éxito!', user });
+    res.json({ success: true, user });
   } catch (err) {
-    res.status(500).json({ error: 'Error al tostar café' });
+    res.status(500).json({ error: 'Error al procesar café' });
   }
 });
 
-// Comprar Semillas en la Tienda
+// Endpoint para Comprar Semillas
 app.post('/api/shop/buy-seeds', async (req, res) => {
   const { id } = req.body;
-  const SEED_PRICE = 10;
   try {
     const user = await User.findOne({ telegramId: id.toString() });
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-    if (user.coins < SEED_PRICE) {
-      return res.status(400).json({ error: 'Monedas insuficientes (Cuestan 10 🪙).' });
+    if (user.coins < 20) {
+      return res.status(400).json({ error: 'Monedas insuficientes' });
     }
 
-    user.coins -= SEED_PRICE;
-    user.inventory.seeds = (user.inventory.seeds || 0) + 1;
+    user.coins -= 20;
     await user.save();
 
     res.json({ success: true, user });
@@ -207,36 +146,36 @@ app.post('/api/shop/buy-seeds', async (req, res) => {
   }
 });
 
-// Crear Oferta P2P
-app.post('/api/p2p/create', async (req, res) => {
-  const { id, itemType, quantity, pricePerUnit } = req.body;
-  const qty = parseInt(quantity);
-  const price = parseInt(pricePerUnit);
+// ==========================================
+// ENDPOINTS MERCADO P2P
+// ==========================================
 
+// Crear Oferta P2P
+app.post('/api/p2p/sell', async (req, res) => {
+  const { id, itemType, quantity, totalPrice } = req.body;
   try {
     const user = await User.findOne({ telegramId: id.toString() });
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-    if ((user.inventory[itemType] || 0) < qty) {
-      return res.status(400).json({ error: 'No tienes suficiente cantidad de este producto.' });
+    if (!user.inventory || (user.inventory[itemType] || 0) < quantity) {
+      return res.status(400).json({ error: 'No tienes suficiente cantidad en el inventario.' });
     }
 
-    user.inventory[itemType] -= qty;
+    // Descontar del inventario y guardar oferta
+    user.inventory[itemType] -= quantity;
     await user.save();
 
     const order = new P2POrder({
       sellerId: user.telegramId,
-      sellerName: user.firstName,
       itemType,
-      quantity: qty,
-      pricePerUnit: price,
-      totalPrice: qty * price
+      quantity,
+      totalPrice
     });
     await order.save();
 
     res.json({ success: true, user });
   } catch (err) {
-    res.status(500).json({ error: 'Error al crear la oferta' });
+    res.status(500).json({ error: 'Error al crear la oferta P2P' });
   }
 });
 
@@ -270,6 +209,7 @@ app.post('/api/p2p/buy', async (req, res) => {
     const seller = await User.findOne({ telegramId: order.sellerId });
 
     buyer.coins -= order.totalPrice;
+    if (!buyer.inventory) buyer.inventory = { cafeVerde: 0, cafeProcesado: 0 };
     buyer.inventory[order.itemType] = (buyer.inventory[order.itemType] || 0) + order.quantity;
 
     if (seller) {
@@ -278,91 +218,55 @@ app.post('/api/p2p/buy', async (req, res) => {
       await seller.save();
 
       // Notificar al vendedor que se realizó una venta
-      if (BOT_TOKEN) {
-        try {
-          await bot.sendMessage(
-            seller.telegramId,
-            `💰 *¡Venta Realizada!* ${buyer.firstName} ha comprado tu oferta de *${order.quantity}* de café. Has recibido *${earnings} monedas* (5% comisión deducida).`,
-            { parse_mode: 'Markdown' }
-          );
+      if (BOT_TOKEN && bot) {
+                await bot.sendMessage(
+          seller.telegramId,
+          `💰 *¡Venta Realizada!* ${buyer.firstName} ha comprado tu oferta de *${order.quantity}* de café. Has recibido ${earnings} monedas.`,
+          { parse_mode: 'Markdown' }
+        );
+
         } catch (e) {
           console.error('Error enviando notificación de venta:', e.message);
         }
       }
-   order.status = 'sold';
-await order.save();
-await buyer.save();
+    }
 
-res.json({ success: true, user: buyer });
-} catch (err) {
+    order.status = 'sold';
+    await order.save();
+    await buyer.save();
+
+    res.json({ success: true, user: buyer });
+  } catch (err) {
     res.status(500).json({ error: 'Error en la compra P2P' });
-}
+  }
 });
 
 // ==========================================
-// ENDPOINTS DE INVENTARIO Y COSECHA
+// ENDPOINTS DE INVENTARIO
 // ==========================================
 
-// 1. Obtener el inventario del usuario
+// Obtener inventario del usuario por telegramId
 app.get('/api/inventory/:telegramId', async (req, res) => {
-    try {
-        const { telegramId } = req.params;
-        let user = await User.findOne({ telegramId });
-        
-        if (!user) {
-            return res.status(404).json({ error: 'Usuario no encontrado' });
-        }
+  try {
+    const { telegramId } = req.params;
+    const user = await User.findOne({ telegramId });
 
-        res.json({
-            coins: user.coins || 0,
-            cafeVerde: user.inventory?.cafeVerde || 0,
-            cafeProcesado: user.inventory?.cafeProcesado || 0
-        });
-    } catch (error) {
-        console.error('Error al obtener inventario:', error);
-        res.status(500).json({ error: 'Error al consultar el inventario' });
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
     }
+
+    res.json({
+      coins: user.coins || 0,
+      cafeVerde: user.inventory?.cafeVerde || 0,
+      cafeProcesado: user.inventory?.cafeProcesado || 0
+    });
+  } catch (error) {
+    console.error('Error al obtener inventario:', error);
+    res.status(500).json({ error: 'Error al consultar el inventario' });
+  }
 });
 
-// 2. Registrar Cosecha y sumar café al inventario
-app.post('/api/harvest', async (req, res) => {
-    try {
-        const { telegramId, cantidad = 10 } = req.body;
-        
-        if (!telegramId) {
-            return res.status(400).json({ error: 'Se requiere telegramId' });
-        }
-
-        let user = await User.findOne({ telegramId });
-
-        if (!user) {
-            return res.status(404).json({ error: 'Usuario no encontrado' });
-        }
-
-        if (!user.inventory) {
-            user.inventory = { cafeVerde: 0, cafeProcesado: 0 };
-        }
-
-        user.inventory.cafeVerde = (user.inventory.cafeVerde || 0) + Number(cantidad);
-
-        await user.save();
-
-        res.json({ 
-            success: true, 
-            message: `¡Cosecha recolectada! +${cantidad} kg de Café Verde.`, 
-            inventory: user.inventory 
-        });
-    } catch (error) {
-        console.error('Error al registrar cosecha:', error);
-        res.status(500).json({ error: 'Error al guardar la cosecha' });
-    }
-});
-
-// ==========================================
-// INICIO DEL SERVIDOR
-// ==========================================
-const PORT = process.env.PORT || 3000;
+// Arrancar el Servidor
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor ejecutándose en el puerto ${PORT}`);
+  console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
-                        
