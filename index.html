@@ -82,7 +82,7 @@
     if (tg) tg.expand();
 
     // Usar la URL directa de Render para descartar problemas de origen
-    const BACKEND_URL = 'https://-agro-tycoon-backend.onrender.com'; 
+    const BACKEND_URL = '';
     const userId = tg?.initDataUnsafe?.user?.id || 12345;
     const GROWTH_TIME = 60;
 
@@ -99,7 +99,7 @@
           body: JSON.stringify({
             id: userId,
             first_name: tg?.initDataUnsafe?.user?.first_name || 'Agricultor',
-            username: tg?.initDataUnsafe?.user?.username || ''
+      
           })
         });
         const data = await res.json();
