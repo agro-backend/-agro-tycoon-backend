@@ -54,22 +54,59 @@ const User = mongoose.model('User', UserSchema);
 const P2POrder = mongoose.model('P2POrder', P2POrderSchema);
 
 // ==========================================
-// ENDPOINTS DEL JUEGO
-// ==========================================
-
-// Autenticación o inicio de usuario
+// Autenticación, inicio de usuario y procesamiento de referidos
 app.post('/api/user/start', async (req, res) => {
-  const { id, firstName } = req.body;
+  const { id, firstName, referrerId } = req.body;
   try {
     let user = await User.findOne({ telegramId: id.toString() });
+
     if (!user) {
+      // Es un usuario totalmente nuevo
       user = new User({
         telegramId: id.toString(),
-        firstName: firstName || 'Agricultor'
+        firstName: firstName || 'Agricultor',
+        coins: 100 // Monedas base
       });
+
+      // Si fue invitado por otro jugador y no se está autoinvitando
+      if (referrerId && referrerId.toString() !== id.toString()) {
+        const referrer = await User.findOne({ telegramId: referrerId.toString() });
+
+        if (referrer) {
+          // Recompensa al usuario nuevo (50 monedas extras de bienvenida)
+          user.coins += 50;
+          user.referredBy = referrer.telegramId;
+
+          // Recompensa al referidor (100 monedas por invitar)
+          referrer.coins += 100;
+          referrer.referralsCount = (referrer.referralsCount || 0) + 1;
+          await referrer.save();
+
+          // Notificar al referidor por Telegram
+          if (BOT_TOKEN && bot) {
+            try {
+              await bot.sendMessage(
+                referrer.telegramId,
+                `🎉 *¡Nuevo Referido!* ${firstName || 'Un usuario'} se ha unido con tu enlace. ¡Recibiste *100 monedas* de recompensa!`,
+                { parse_mode: 'Markdown' }
+              );
+            } catch (e) {
+              console.error('Error al notificar referidor:', e.message);
+            }
+          }
+        }
+      }
+
       await user.save();
     }
+
     res.json({ success: true, user });
+  } catch (err) {
+    console.error('Error en /api/user/start:', err);
+    res.status(500).json({ error: 'Error al iniciar usuario' });
+  }
+});
+
   } catch (err) {
     res.status(500).json({ error: 'Error al iniciar usuario' });
   }
