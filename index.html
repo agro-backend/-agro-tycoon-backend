@@ -65,7 +65,8 @@
     const tg = window.Telegram?.WebApp;
     if (tg) tg.expand();
 
-    const BACKEND_URL = 'https://agro-tycoon-backend.onrender.com'; // Ajusta si tu dominio cambió
+    const BACKEND_URL = window.location.origin;
+
     const userId = tg?.initDataUnsafe?.user?.id || 12345; // ID de prueba si estás fuera de Telegram
     const GROWTH_TIME = 60; // Tiempo en segundos (1 minuto)
 
