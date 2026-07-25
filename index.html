@@ -180,18 +180,24 @@
     }
 
     async function handleCropAction() {
-      const endpoint = (currentStatus === 'empty') ? '/api/user/plant' : '/api/user/harvest';
-      try {
-        const res = await fetch(`${BACKEND_URL}${endpoint}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: userId, plotId: 1 })
-        });
-        const data = await res.json();
-        if (data.success) updateUI(data.user);
-        else alert(data.error);
-      } catch (err) { console.error(err); }
+  const endpoint = (currentStatus === 'empty') ? '/api/user/plant' : '/api/user/harvest';
+  try {
+    const res = await fetch(`${BACKEND_URL}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: userId, plotId: 1 })
+    });
+    const data = await res.json();
+    if (data.success) {
+      updateUI(data.user);
+    } else {
+      alert(data.error);
     }
+  } catch (err) { 
+    console.error(err); 
+  }
+}
+
 
     async function roastCoffee() {
       try {
