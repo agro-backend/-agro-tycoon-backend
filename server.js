@@ -38,6 +38,10 @@ const UserSchema = new mongoose.Schema({
   // Nuevos campos para referidos
   referredBy: { type: String, default: null },
   referralsCount: { type: Number, default: 0 }
+
+  // Campos para control de tiempos y misiones
+  lastPlantedAt: { type: Date, default: null },
+  lastDailyClaim: { type: Date, default: null }
 });
 
 
@@ -108,43 +112,83 @@ app.post('/api/user/start', async (req, res) => {
 });
 
   } catch (err) {
-    res.status(500).json({ error: 'Error al iniciar usuario' });
-  }
-});
-
-// Endpoint para Sembrar
+  // Endpoint para Sembrar (Registra la hora actual)
 app.post('/api/user/plant', async (req, res) => {
   const { id } = req.body;
   try {
     const user = await User.findOne({ telegramId: id.toString() });
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-    res.json({ success: true, user });
+    user.lastPlantedAt = new Date();
+    await user.save();
+
+    res.json({ success: true, user, message: '¡Siembra iniciada!' });
   } catch (err) {
     res.status(500).json({ error: 'Error al sembrar' });
   }
 });
 
-// Endpoint para Cosechar
+// Endpoint para Cosechar (Temporizador de 30 segundos)
 app.post('/api/user/harvest', async (req, res) => {
   const { id } = req.body;
   try {
     const user = await User.findOne({ telegramId: id.toString() });
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
+    if (!user.lastPlantedAt) {
+      return res.status(400).json({ error: 'Debes sembrar primero antes de cosechar.' });
+    }
+
+    const COOLDOWN_MS = 30 * 1000; // 30 segundos
+    const now = new Date();
+    const timePassed = now - new Date(user.lastPlantedAt);
+
+    if (timePassed < COOLDOWN_MS) {
+      const remainingSeconds = Math.ceil((COOLDOWN_MS - timePassed) / 1000);
+      return res.status(400).json({ 
+        error: `El café aún no está listo. Espera ${remainingSeconds} segundos.`,
+        remainingSeconds 
+      });
+    }
+
     if (!user.inventory) {
       user.inventory = { cafeVerde: 0, cafeProcesado: 0 };
     }
 
-    // Se otorgan 10 kg de café verde por cosecha
     user.inventory.cafeVerde = (user.inventory.cafeVerde || 0) + 10;
+    user.lastPlantedAt = null; 
     await user.save();
 
-    res.json({ success: true, user });
+    res.json({ success: true, user, message: '¡Cosecha exitosa!' });
   } catch (err) {
     res.status(500).json({ error: 'Error al cosechar' });
   }
 });
+
+// Endpoint para Recompensa Diaria (Misión cada 24 horas)
+app.post('/api/user/daily-claim', async (req, res) => {
+  const { id } = req.body;
+  try {
+    const user = await User.findOne({ telegramId: id.toString() });
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    const DAY_IN_MS = 24 * 60 * 60 * 1000;
+    const now = new Date();
+
+    if (user.lastDailyClaim && (now - new Date(user.lastDailyClaim)) < DAY_IN_MS) {
+      return res.status(400).json({ error: 'Ya reclamaste tu bono diario. Vuelve mañana.' });
+    }
+
+    user.coins = (user.coins || 0) + 100;
+    user.lastDailyClaim = now;
+    await user.save();
+
+    res.json({ success: true, user, message: '¡Recompensa diaria reclamada (+100 monedas)!' });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al reclamar la recompensa diaria' });
+  }
+});
+
 
 // Endpoint para Procesar / Tostar Café
 app.post('/api/factory/roast', async (req, res) => {
