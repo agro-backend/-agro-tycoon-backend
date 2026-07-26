@@ -39,7 +39,17 @@
     <div>🪙 Monedas: <span id="coins">0</span></div>
     <div>🌱 Semillas: <span id="seeds">0</span></div>
   </div>
-
+<!-- MISIONES Y REFERIDOS -->
+<div class="card" style="margin-bottom: 15px; text-align: center;">
+  <h3>🎁 Premios & Invitaciones</h3>
+  <button id="btnDaily" class="btn" onclick="reclamarBonoDiario()" style="background-color: #27ae60; margin-bottom: 8px; width: 100%;">
+    🎁 Reclamar Bono Diario (+100 Monedas)
+  </button>
+  <button class="btn" onclick="compartirReferido()" style="background-color: #2980b9; width: 100%;">
+    👥 Invitar Amigos (+100 Monedas)
+  </button>
+</div>
+  
   <!-- PESTAÑA 1: FINCA -->
   <div id="tab-finca" class="tab-content active">
     <div class="card">
@@ -307,6 +317,44 @@ async function cargarInventario() {
 }
 
     window.onload = initApp;
+    // Función para Reclamar la Recompensa Diaria
+async function reclamarBonoDiario() {
+if (!userId) return;
+
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/user/daily-claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: userId })
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      alert(data.message);
+      actualizarInterfaz(data.user);
+    } else {
+      alert(data.error); // Muestra si aún debe esperar para reclamar
+    }
+  } catch (err) {
+    console.error('Error al reclamar bono diario:', err);
+  }
+}
+
+// Función para Abrir el Menú Nativo de Compartir en Telegram
+function compartirReferido() {
+ if (!userId) return;
+
+  // Sustituye el texto entre comillas por el Username real de tu Bot sin el @
+  const botUsername = "TuAgroTycoonBot";
+    
+  const referralLink = `https://t.me/${botUsername}start=${userId}`;
+  const mensaje = encodeURIComponent("🌱 ¡Únete a mi finca en Agro-Tycoon Pro! Siembra, procesa café y comercia en el Mercado P2P. Usa mi enlace y recibe 50 monedas de regalo:");
+
+  // Abre la ventana nativa de Telegram para compartir directamente con amigos
+  tg?.openTelegramLink(`https://t.me/share/url?url=${referralLink}&text=${mensaje}`);
+    }
+          
   </script>
 </body>
 </html>
